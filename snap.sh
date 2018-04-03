@@ -43,9 +43,17 @@ fi
 
 if [[ "$USE_INSECURE" == "true" ]]; then
 	ETCDCTL_API=3 /usr/local/bin/etcdctl --endpoints=${ETCD_CLUSTER} --insecure-skip-tls-verify=true --insecure-transport=false --write-out=table snapshot save /tmp/snapshot${TS}.db
+	if [ $? == 1 ]; then
+		echo "ERROR - Snapshot failed"
+		exit 1
+	fi
 else
 	ETCDCTL_API=3 /usr/local/bin/etcdctl --endpoints=${ETCD_CLUSTER} --cacert="${CACERT}" --write-out=table snapshot save /tmp/snapshot${TS}.db
-	
+	if [ $? == 1 ]; then
+		echo "ERROR - Snapshot failed"
+		exit 1
+	fi
+
 fi
 CREATE_SEC=`date +%s`
 
