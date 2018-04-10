@@ -1,17 +1,6 @@
 #!/bin/bash
 
-#Set OpenStack Env
-#Following OpenStack auth environment variables must be set for your environment
-#export OS_PROJECT_ID=
-#export OS_REGION_NAME=
-#export OS_USER_DOMAIN_NAME=
-#export OS_PROJECT_NAME=
-#export OS_IDENTITY_API_VERSION=3
-#export OS_PASSWORD=
-#export OS_AUTH_URL=
-#export OS_USERNAME=
-#export OS_INTERFACE=
-
+#Takes snapshot of Kubernetes Etcd database and uses mk8s ETS Service to push the file to Object Storage
 
 TS=`date +%Y%m%d-%H%M`
 
@@ -33,13 +22,6 @@ if [ -z ${CACERT+x} ]; then
 	CACERT="/etc/secret-volume/etcd-client-ca.crt"
 fi
 
-if openstack container list --insecure -f value |grep $OBJ_CONTAINER; then
-	echo "$OBJ_CONTAINER exists"
-else
-	echo "$OBJ_CONTAINER doesnt exists"
-	echo "Creating $OBJ_CONTAINER"
-	openstack container create $OBJ_CONTAINER --insecure
-fi
 
 if [[ "$USE_INSECURE" == "true" ]]; then
 	ETCDCTL_API=3 /usr/local/bin/etcdctl --endpoints=${ETCD_CLUSTER} --insecure-skip-tls-verify=true --insecure-transport=false --write-out=table snapshot save /tmp/snapshot${TS}.db
@@ -57,16 +39,26 @@ else
 fi
 CREATE_SEC=`date +%s`
 
-openstack object create --name snapshot${TS}.db $OBJ_CONTAINER /tmp/snapshot${TS}.db --insecure
-openstack object set --property CREATE=$CREATE_SEC $OBJ_CONTAINER snapshot${TS}.db --insecure
+#hit the ETA for a url/token on the ETP
+AUTH_URL=`curl -q http://localhost:8887/auth/v3/auth/tokens | grep -o '<a .*href=.*>' | sed -e 's/<a /\n<a /g' | sed -e 's/<a .*href=['"'"'"]//' -e 's/["'"'"'].*$//' -e '/^$/ d'`
 
-for i in `openstack object list --all -f value $OBJ_CONTAINER --insecure |grep -v Name`
-do
-	eval `openstack object show $OBJ_CONTAINER $i -f value --insecure |grep Create`
-	AGE=$((`date +%s` - $Create))
-	if (( $EXPIRE_TIME < $AGE )); then
-		echo "Expiring $i"
-		openstack object delete $OBJ_CONTAINER $i --insecure
-	fi
+#hit the ETP through the ETA via  Referer to get a list of endpoints
+OBJ_URL=`curl -L -k -H "Referer: ${AUTH_URL}" http://localhost:8887/auth/v3/auth/tokens |jq '[.token.catalog[] |  select(.name=="swift") | .endpoints[] | select(.interface=="public") |.url]' | awk -F\" '{print $2}'`
+echo $OBJ_URL
 
-done
+#hit the ETG to get another token
+TOKEN=`curl http://169.254.169.254/openstack/latest/vendor_data2.json  |jq '.etg.token' |awk -F\" '{print $2}'`
+echo "TOKEN: $TOKEN"
+
+#Validate Object container exists and create if it doesn't
+if curl -L  -k -X GET -H "X-Auth-Token:${TOKEN}" ${OBJ_URL} |grep ${OBJ_CONTAINER}; then
+	echo "$OBJ_CONTAINER exists"
+else
+	echo "$OBJ_CONTAINER doesnt exists"
+	echo "Creating $OBJ_CONTAINER"
+	curl -L  -k -X PUT -H "X-Container-Meta-Book: K8S-Etcd-Snapshots" -H "X-Auth-Token:${TOKEN}" ${OBJ_URL}/${OBJ_CONTAINER}
+fi
+
+#hit the ETP endpoint to push snapshot
+curl -L  -k -X PUT -H "X-Delete-After:$EXPIRE_TIME" -H "X-Auth-Token:${TOKEN}" ${OBJ_URL}/${OBJ_CONTAINER}/snapshot${TS}.db -T /tmp/snapshot${TS}.db
+
