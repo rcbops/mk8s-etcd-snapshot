@@ -19,7 +19,7 @@ if [ -z ${EXPIRE_TIME+x} ]; then
 fi
 
 if [ -z ${ETCD_CA_CRT+x} ]; then
-	CACERT="/etc/secret-volume/etcd-client-ca.crt"
+	ECTD_CA_CRT="/etc/secret-volume/etcd-client-ca.crt"
 fi
 
 if [ -z ${ETCD_CLIENT_CRT+x} ]; then
@@ -38,7 +38,7 @@ if [[ "$USE_INSECURE" == "true" ]]; then
 		exit 1
 	fi
 else
-	ETCDCTL_API=3 /usr/local/bin/etcdctl --endpoints=${ETCD_CLUSTER} --cacert="${ETCD_CA_CRT}" --cert-file="${ETCD_CLIENT_CRT}" --key-file="${ETCD_CLIENT_KEY}"  --write-out=table snapshot save /tmp/snapshot${TS}.db
+	ETCDCTL_API=3 /usr/local/bin/etcdctl --endpoints=${ETCD_CLUSTER} --cacert="${ETCD_CA_CRT}" --cert="${ETCD_CLIENT_CRT}" --key="${ETCD_CLIENT_KEY}"  --write-out=table snapshot save /tmp/snapshot${TS}.db
 	if [ $? == 1 ]; then
 		echo "ERROR - Snapshot failed"
 		exit 1
