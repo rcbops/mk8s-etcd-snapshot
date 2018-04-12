@@ -19,7 +19,7 @@ if [ -z ${EXPIRE_TIME+x} ]; then
 fi
 
 if [ -z ${ETCD_CA_CRT+x} ]; then
-	ECTD_CA_CRT="/etc/secret-volume/etcd-client-ca.crt"
+	ETCD_CA_CRT="/etc/secret-volume/etcd-client-ca.crt"
 fi
 
 if [ -z ${ETCD_CLIENT_CRT+x} ]; then
